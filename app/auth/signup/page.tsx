@@ -41,6 +41,16 @@ export default function SignUpPage() {
         throw new Error("رقم الهاتف غير صحيح")
       }
 
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString()
+      
+      if (verificationMethod === "email") {
+        sessionStorage.setItem(`otp_verify_${email}`, generatedOtp)
+        console.log(`[MARA] Verification OTP for ${email}: ${generatedOtp}`)
+      } else {
+        sessionStorage.setItem(`otp_sms_${cleanPhone}`, generatedOtp)
+        console.log(`[MARA] SMS Verification OTP for ${phone}: ${generatedOtp}`)
+      }
+
       localStorage.setItem(
         "signupData",
         JSON.stringify({
@@ -51,18 +61,14 @@ export default function SignUpPage() {
         }),
       )
 
-      setSuccessMessage("تم حفظ بيانات الحساب. سيتم إرسال رمز التحقق...")
+      setSuccessMessage(
+        `تم إرسال رمز التحقق إلى ${verificationMethod === "email" ? email : phone}. الرمز: ${generatedOtp}`
+      )
 
       setTimeout(() => {
-        if (verificationMethod === "email") {
-          // In production, call API to send email
-          setStep("verify")
-        } else {
-          // In production, call API to send SMS
-          setStep("verify")
-        }
+        setStep("verify")
         setSuccessMessage(null)
-      }, 1000)
+      }, 1500)
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "حدث خطأ ما")
     } finally {
@@ -189,25 +195,46 @@ export default function SignUpPage() {
                 </Button>
               </form>
             ) : (
-              <div className="space-y-4">
+              <form onSubmit={(e) => {
+                e.preventDefault()
+                setIsLoading(true)
+                const signupData = JSON.parse(localStorage.getItem("signupData") || "{}")
+                const savedOtp = verificationMethod === "email" 
+                  ? sessionStorage.getItem(`otp_verify_${signupData.email}`)
+                  : sessionStorage.getItem(`otp_sms_${signupData.phone}`)
+                
+                if (otp === savedOtp) {
+                  localStorage.setItem("authToken", `token_${Date.now()}`)
+                  localStorage.setItem("user", JSON.stringify(signupData))
+                  sessionStorage.removeItem(`otp_verify_${signupData.email}`)
+                  sessionStorage.removeItem(`otp_sms_${signupData.phone}`)
+                  setSuccessMessage("تم إنشاء الحساب بنجاح!")
+                  setTimeout(() => router.push("/menu"), 1000)
+                } else {
+                  setError("رمز التحقق غير صحيح")
+                }
+                setIsLoading(false)
+              }} className="space-y-4">
                 <p className="text-center text-sm text-slate-300">
                   تم إرسال رمز التحقق إلى {verificationMethod === "email" ? email : phone}
                 </p>
                 <Input
                   type="text"
                   placeholder="أدخل رمز التحقق 6 أرقام"
-                  className="border-amber-400/20 bg-amber-400/5 focus:border-amber-400 text-center tracking-widest"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.slice(0, 6))}
+                  maxLength={6}
+                  className="border-amber-400/20 bg-amber-400/5 focus:border-amber-400 text-center tracking-widest text-2xl"
+                  disabled={isLoading}
                 />
                 <Button
+                  type="submit"
                   className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold h-11"
-                  onClick={() => {
-                    localStorage.setItem("authToken", `token_${Date.now()}`)
-                    router.push("/menu")
-                  }}
+                  disabled={isLoading || otp.length !== 6}
                 >
-                  تحقق وادخل
+                  {isLoading ? "جاري التحقق..." : "تحقق وأنشئ الحساب"}
                 </Button>
-              </div>
+              </form>
             )}
 
             <div className="mt-6 text-center text-sm text-slate-400">

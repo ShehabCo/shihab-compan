@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft, Sparkles, Clock, Shield, Crown } from "lucide-react"
 import Link from "next/link"
 
-export default async function HomePage() {
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border/30 bg-card/50 backdrop-blur-lg">

@@ -31,12 +31,19 @@ export default function LoginPage() {
 
     try {
       if (!email || !password) throw new Error("الرجاء ملء جميع الحقول")
+      if (!email.includes("@")) throw new Error("البريد الإلكتروني غير صحيح")
+      if (password.length < 6) throw new Error("كلمة المرور يجب أن تكون 6 أحرف على الأقل")
 
-      localStorage.setItem("authToken", `token_${Date.now()}`)
-      localStorage.setItem("user", JSON.stringify({ email, type: "email" }))
-      setSuccessMessage("تم تسجيل الدخول بنجاح!")
-
-      setTimeout(() => router.push("/menu"), 1000)
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString()
+      sessionStorage.setItem(`otp_email_${email}`, generatedOtp)
+      
+      console.log(`[MARA] OTP for ${email}: ${generatedOtp}`)
+      
+      setSuccessMessage(`تم إرسال رمز التحقق إلى ${email} - الرمز: ${generatedOtp}`)
+      setTimeout(() => {
+        setStep("verify")
+        setSuccessMessage(null)
+      }, 1500)
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "خطأ في تسجيل الدخول")
     } finally {
@@ -57,11 +64,13 @@ export default function LoginPage() {
       sessionStorage.setItem(`otp_${cleanPhone}`, generatedOtp)
       sessionStorage.setItem("otp_phone", cleanPhone)
 
-      setSuccessMessage(`سيتم إرسال الرمز إلى ${phone}`)
+      console.log(`[MARA] SMS OTP for ${phone}: ${generatedOtp}`)
+      
+      setSuccessMessage(`تم إرسال الرمز إلى ${phone} - الرمز: ${generatedOtp}`)
       setTimeout(() => {
         setStep("verify")
         setSuccessMessage(null)
-      }, 1000)
+      }, 1500)
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "حدث خطأ ما")
     } finally {
@@ -77,13 +86,26 @@ export default function LoginPage() {
     try {
       if (otp.length !== 6) throw new Error("الرمز يجب أن يكون 6 أرقام")
 
-      const cleanPhone = phone.replace(/\D/g, "")
-      const savedOtp = sessionStorage.getItem(`otp_${cleanPhone}`)
+      let savedOtp = null
+      
+      if (loginMethod === "email") {
+        savedOtp = sessionStorage.getItem(`otp_email_${email}`)
+      } else {
+        const cleanPhone = phone.replace(/\D/g, "")
+        savedOtp = sessionStorage.getItem(`otp_${cleanPhone}`)
+      }
 
       if (otp !== savedOtp) throw new Error("رمز التحقق غير صحيح")
 
       localStorage.setItem("authToken", `token_${Date.now()}`)
-      localStorage.setItem("user", JSON.stringify({ phone: cleanPhone, type: "sms" }))
+      localStorage.setItem("user", JSON.stringify({ 
+        [loginMethod === "email" ? "email" : "phone"]: loginMethod === "email" ? email : phone.replace(/\D/g, ""),
+        type: loginMethod === "email" ? "email" : "sms"
+      }))
+      
+      sessionStorage.removeItem(`otp_${email}`)
+      sessionStorage.removeItem(`otp_${phone}`)
+      
       setSuccessMessage("تم التحقق بنجاح!")
 
       setTimeout(() => router.push("/menu"), 1000)
@@ -95,8 +117,17 @@ export default function LoginPage() {
   }
 
   const handleGoogleLogin = async () => {
-    localStorage.setItem("authToken", `google_${Date.now()}`)
-    router.push("/menu")
+    setIsLoading(true)
+    try {
+      localStorage.setItem("authToken", `google_${Date.now()}`)
+      localStorage.setItem("user", JSON.stringify({ type: "google" }))
+      setSuccessMessage("تم تسجيل الدخول عبر Google!")
+      setTimeout(() => router.push("/menu"), 1000)
+    } catch {
+      setError("خطأ في تسجيل الدخول عبر Google")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -135,6 +166,10 @@ export default function LoginPage() {
                 setLoginMethod(value as "email" | "phone")
                 setStep("login")
                 setError(null)
+                setOtp("")
+                setEmail("")
+                setPhone("")
+                setPassword("")
               }}
               className="w-full"
             >
@@ -221,13 +256,86 @@ export default function LoginPage() {
                       <Button
                         type="submit"
                         className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold h-11"
-                        disabled={isLoading}
+                        disabled={isLoading || otp.length !== 6}
                       >
                         {isLoading ? "جاري..." : "تحقق"}
                       </Button>
                       <button
                         type="button"
-                        onClick={() => setStep("login")}
+                        onClick={() => {
+                          setStep("login")
+                          setOtp("")
+                          setError(null)
+                        }}
+                        className="text-xs text-amber-400 hover:text-amber-300 w-full"
+                      >
+                        عودة
+                      </button>
+                    </>
+                  )}
+                </form>
+              </TabsContent>
+              
+              <TabsContent value="email">
+                <form onSubmit={step === "login" ? handleEmailLogin : handleOtpSubmit} className="space-y-4">
+                  {step === "login" ? (
+                    <>
+                      <div className="grid gap-2">
+                        <Label className="text-amber-300">البريد الإلكتروني</Label>
+                        <Input
+                          type="email"
+                          placeholder="your@email.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="border-amber-400/20 bg-amber-400/5"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label className="text-amber-300">كلمة المرور</Label>
+                        <Input
+                          type="password"
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="border-amber-400/20 bg-amber-400/5"
+                          disabled={isLoading}
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold h-11"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? "جاري..." : "إرسال رمز التحقق"}
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-slate-300 text-center">تم إرسال الرمز إلى {email}</p>
+                      <Input
+                        type="text"
+                        placeholder="000000"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.slice(0, 6))}
+                        className="border-amber-400/20 bg-amber-400/5 text-center text-2xl tracking-widest"
+                        disabled={isLoading}
+                        maxLength={6}
+                      />
+                      <Button
+                        type="submit"
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold h-11"
+                        disabled={isLoading || otp.length !== 6}
+                      >
+                        {isLoading ? "جاري..." : "تحقق"}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep("login")
+                          setOtp("")
+                          setError(null)
+                        }}
                         className="text-xs text-amber-400 hover:text-amber-300 w-full"
                       >
                         عودة
